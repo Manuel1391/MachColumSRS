@@ -29,6 +29,14 @@
     background: #fff8d5; border: 1px solid #ccc; border-radius: 10px;
     display:none; font-size: 1.1em; line-height: 1.4em;
   }
+  .difficulty-buttons {
+    margin-top: 10px;
+    text-align: center;
+  }
+  .difficulty-buttons button {
+    padding: 8px 16px;
+    margin: 5px;
+  }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -159,23 +167,57 @@ function render() {
   renderRight(shuffle([...new Set(remainingAnswers)]));
 }
 
-function showInfo(text) {
+function showInfo(text, id=null) {
   if (text) {
-    infoBox.textContent = text;
+    infoBox.innerHTML = text;
     infoBox.style.display = "block";
-    infoBoxTop.textContent = text;
+    infoBoxTop.innerHTML = text;
     infoBoxTop.style.display = "block";
+
+    if (id) {
+      const buttonsDiv = document.createElement("div");
+      buttonsDiv.className = "difficulty-buttons";
+      buttonsDiv.innerHTML = `
+        <button onclick="markDifficulty('${id}', 'easy')">Fácil</button>
+        <button onclick="markDifficulty('${id}', 'hard')">Difícil</button>`;
+      infoBox.appendChild(buttonsDiv);
+      infoBoxTop.appendChild(buttonsDiv.cloneNode(true));
+    }
   } else {
     infoBox.style.display = "none";
     infoBoxTop.style.display = "none";
   }
 }
 
+function markDifficulty(id, level) {
+  const data = getSRSData();
+  if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
+  let d = data[id];
+  if (level === 'hard') {
+    d.wrongCount += 2;  
+    d.interval = 1;
+    d.dueDate = todayISO();
+
+    // Reforzar en la misma sesión
+    let card = allPairs.find(c => c.id === id);
+    if (card) {
+      card.solved = false;
+      pairs.push(card);
+    }
+
+  } else {
+    d.interval = d.interval * 2;
+    d.dueDate = addDays(todayISO(), d.interval);
+  }
+  saveSRSData(data);
+  showInfo(""); 
+  render(); // actualizar lista
+}
+
 function updateSRSOnCorrect(id){
   const data = getSRSData();
   if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
   let d = data[id];
-  // Increment interval simple
   d.interval = d.interval * 2;
   d.dueDate = addDays(todayISO(), d.interval);
   saveSRSData(data);
@@ -185,8 +227,8 @@ function updateSRSOnWrong(id){
   if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
   let d = data[id];
   d.wrongCount += 1;
-  d.interval = 1; // volver al inicio
-  d.dueDate = todayISO(); // vuelve a estar disponible hoy
+  d.interval = 1;
+  d.dueDate = todayISO();
   saveSRSData(data);
 }
 
@@ -201,7 +243,7 @@ function handleRightClick(txt) {
     selectedQuestion.solved = true;
     updateSRSOnCorrect(selectedQuestion.id);
 
-    showInfo(selectedQuestion.info);
+    showInfo(selectedQuestion.info, selectedQuestion.id);
     leftItems.forEach(li=>{ if (li.textContent === selectedQuestion.question) li.classList.add("correct"); });
     allAnswers.forEach(a=>{ if (a.textContent === txt) a.classList.add("correct"); });
 
@@ -235,7 +277,7 @@ function handleHelpClick() {
 helpBtn.onclick = handleHelpClick;
 helpBtnTop.onclick = handleHelpClick;
 
-// --- Preparación con resumen ---
+// --- Preparación ---
 function prepareData(){
   const sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1ku8Bwcp5dau8z-3zbILSBb0sQ-Kw62Peznvqv-Q0j9_h-uzkq1m6DS4Q8ZFv1On44lnMNtuyVYQl/pub?output=csv";
   fetch(sheetUrl)
@@ -255,7 +297,6 @@ function prepareData(){
         solved: false
       })).filter(p => p.question && p.answer);
 
-      // Contar y filtrar
       rows.forEach(r=>{
         let info = srs[r.id];
         if (!info || info.dueDate <= today) due++; else future++;
@@ -265,21 +306,28 @@ function prepareData(){
         return;
       }
 
-      // Filtrar solo las que están vencidas
-      allPairs = rows.filter(r=>{
+      let candidates = rows.filter(r=>{
         const d = srs[r.id];
         return !d || d.dueDate <= today;
       });
 
-      // Ordenar por wrongCount (mayor primero)
-      allPairs.sort((a,b)=>{
+      candidates.sort((a,b)=>{
         let sa = srs[a.id]?.wrongCount || 0;
         let sb = srs[b.id]?.wrongCount || 0;
         return sb - sa;
       });
 
       const numTerms = parseInt(document.getElementById("numTerms").value, 10);
-      allPairs = allPairs.slice(0,numTerms);
+      let top = Math.ceil(numTerms * 0.4);
+      let middle = Math.ceil(numTerms * 0.3);
+      let rest = numTerms - top - middle;
+
+      const hard = shuffle(candidates.slice(0, 30)).slice(0, top);
+      const midStart = Math.floor(candidates.length/3);
+      const middleBlock = shuffle(candidates.slice(midStart, midStart+30)).slice(0, middle);
+      const endBlock = shuffle(candidates.slice(-30)).slice(0, rest);
+
+      allPairs = shuffle([...hard, ...middleBlock, ...endBlock]);
 
       if (allPairs.length===0){ alert("No hay tarjetas para hoy"); return; }
 

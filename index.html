@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Matching con sonidos y SRS</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f4;}
+  h1 { text-align: center; }
+  .top-buttons, .bottom-buttons {
+    text-align:center;
+    margin-top: 20px;
+  }
+  .container { display: flex; gap: 40px; justify-content: center; margin-top:20px; }
+  .column { display: flex; flex-direction: column; gap: 10px; }
+  .item {
+    padding: 8px 12px; background: white; border: 1px solid #ccc; cursor: pointer;
+    border-radius: 8px; width: 200px; text-align: center;
+    transition: background 0.3s, transform 0.2s;
+  }
+  .item:hover { background: #eaeaea; transform: scale(1.02); }
+  .correct { background: #c8f7c5 !important; cursor: default !important; }
+  .wrong { background: #f7c5c5 !important; }
+  #helpBtnTop, #helpBtn, #backBtn, #resetBtn, #clearHistoryBtn { padding: 10px 20px; display:none;}
+  #setup { max-width: 700px; margin: auto; }
+  textarea { width: 100%; height: 180px; margin-bottom: 10px; }
+  button { padding: 10px 20px; margin-right:10px;}
+  .infoBox {
+    max-width: 600px; margin: 20px auto; padding: 15px;
+    background: #fff8d5; border: 1px solid #ccc; border-radius: 10px;
+    display:none; font-size: 1.1em; line-height: 1.4em;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+
+<h1>Matching con distractores (SRS)</h1>
+
+<div id="setup">
+  <h2>Configura tus pares</h2>
+  <p><strong>Formato:</strong>  
+  pregunta=respuesta|distractor1|distractor2|distractor3|Texto a mostrar (opcional)</p>
+  <textarea id="pairsInput">Apple=Manzana|Mango|Pera|Sandía|La manzana es una fruta común.
+Dog=Perro|Gato|Lobo|Vaca|El perro es un animal doméstico.
+House=Casa|Puerta|Mesa|Carro|La casa es donde vivimos.</textarea>
+  
+  <button onclick="prepareData()">Comenzar</button>
+  <label for="numTerms">Cantidad de términos:</label>
+  <select id="numTerms">
+    <option value="10">10</option>
+    <option value="20">20</option>
+    <option value="50" selected>50</option>
+  </select>
+</div>
+
+<div class="top-buttons">
+  <button id="helpBtnTop">Casi la recuerdo (filtrar)</button>
+</div>
+
+<div id="infoBoxTop" class="infoBox"></div>
+
+<div class="container" id="game" style="display:none;">
+  <div class="column" id="left"></div>
+  <div class="column" id="right"></div>
+</div>
+
+<div class="bottom-buttons">
+  <button id="helpBtn">Casi la recuerdo (filtrar)</button>
+  <button id="resetBtn" onclick="resetGame()">Reiniciar juego</button>
+  <button id="clearHistoryBtn" onclick="clearSRS()">Reiniciar historial/SRS</button>
+  <button id="backBtn" onclick="goBack()">Volver</button>
+</div>
+
+<div id="infoBox" class="infoBox"></div>
+
+<script>
+let allPairs = [];
+let pairs = [];
+let selectedQuestion = null;
+let score = {correct:0, wrong:0};
+let helpMode = false;
+
+// --- SRS LocalStorage ---
+function getSRSData(){
+  return JSON.parse(localStorage.getItem("srsData") || "{}");
+}
+function saveSRSData(data){
+  localStorage.setItem("srsData", JSON.stringify(data));
+}
+function clearSRS(){
+  localStorage.removeItem("srsData");
+  alert("Historial SRS borrado.");
+}
+
+// --- Utilidades ---
+function todayISO(){
+  return new Date().toISOString().slice(0,10);
+}
+function addDays(dateStr, days){
+  const d = new Date(dateStr);
+  d.setDate(d.getDate()+days);
+  return d.toISOString().slice(0,10);
+}
+
+// --- UI Elements ---
+const leftCol = document.getElementById("left");
+const rightCol = document.getElementById("right");
+const helpBtn = document.getElementById("helpBtn");
+const helpBtnTop = document.getElementById("helpBtnTop");
+const backBtn = document.getElementById("backBtn");
+const resetBtn = document.getElementById("resetBtn");
+const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+const infoBox = document.getElementById("infoBox");
+const infoBoxTop = document.getElementById("infoBoxTop");
+
+// --- Sonidos ---
+let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function ensureAudioContext() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
+function playTone(frequency, duration) {
+  ensureAudioContext();
+  const oscillator = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  oscillator.type = "sine";
+  oscillator.frequency.value = frequency;
+  gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+  oscillator.start();
+  oscillator.stop(audioCtx.currentTime + duration);
+}
+function playCorrectSound() { playTone(600, 0.15); setTimeout(()=>playTone(900, 0.15), 150); }
+function playWrongSound() { playTone(200, 0.2); setTimeout(()=>playTone(100, 0.2), 200); }
+
+// --- Juego ---
+function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
+
+function renderRight(options) {
+  rightCol.innerHTML = "";
+  options.forEach(txt => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.textContent = txt;
+    div.onclick = () => handleRightClick(txt);
+    rightCol.appendChild(div);
+  });
+}
+
+function render() {
+  leftCol.innerHTML = "";
+  shuffle(pairs).forEach(p => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.textContent = p.question;
+    if (p.solved) div.classList.add("correct");
+    else div.onclick = () => { selectedQuestion = p; helpMode=false; };
+    leftCol.appendChild(div);
+  });
+  let remainingAnswers = pairs.filter(p => !p.solved).map(p => p.answer);
+  renderRight(shuffle([...new Set(remainingAnswers)]));
+}
+
+function showInfo(text) {
+  if (text) {
+    infoBox.textContent = text;
+    infoBox.style.display = "block";
+    infoBoxTop.textContent = text;
+    infoBoxTop.style.display = "block";
+  } else {
+    infoBox.style.display = "none";
+    infoBoxTop.style.display = "none";
+  }
+}
+
+function updateSRSOnCorrect(id){
+  const data = getSRSData();
+  if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
+  let d = data[id];
+  // Increment interval simple
+  d.interval = d.interval * 2;
+  d.dueDate = addDays(todayISO(), d.interval);
+  saveSRSData(data);
+}
+function updateSRSOnWrong(id){
+  const data = getSRSData();
+  if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
+  let d = data[id];
+  d.wrongCount += 1;
+  d.interval = 1; // volver al inicio
+  d.dueDate = todayISO(); // vuelve a estar disponible hoy
+  saveSRSData(data);
+}
+
+function handleRightClick(txt) {
+  if (!selectedQuestion || selectedQuestion.solved) return;
+  const allAnswers = document.querySelectorAll("#right .item");
+  const leftItems = document.querySelectorAll("#left .item");
+
+  if (txt === selectedQuestion.answer) {
+    playCorrectSound();
+    score.correct++;
+    selectedQuestion.solved = true;
+    updateSRSOnCorrect(selectedQuestion.id);
+
+    showInfo(selectedQuestion.info);
+    leftItems.forEach(li=>{ if (li.textContent === selectedQuestion.question) li.classList.add("correct"); });
+    allAnswers.forEach(a=>{ if (a.textContent === txt) a.classList.add("correct"); });
+
+    if (helpMode) { helpMode = false; setTimeout(render, 300); } else { render(); }
+
+    if (pairs.every(p=>p.solved)) {
+      setTimeout(()=>alert(`¡Completaste todos!\nAciertos: ${score.correct}\nErrores: ${score.wrong}`),100);
+    }
+    selectedQuestion = null;
+  } else {
+    playWrongSound();
+    score.wrong++;
+    updateSRSOnWrong(selectedQuestion.id);
+    allAnswers.forEach(a=>{
+      if (a.textContent === txt) {
+        a.classList.add("wrong");
+        setTimeout(()=>a.classList.remove("wrong"), 500);
+      }
+    });
+  }
+}
+
+function handleHelpClick() {
+  if (!selectedQuestion) { alert("Primero selecciona un término de la columna izquierda"); return; }
+  helpMode = true;
+  const correct = selectedQuestion.answer;
+  const wrongs = shuffle(selectedQuestion.distractors.filter(x=>x));
+  const options = shuffle([correct, ...wrongs.slice(0,2)]);
+  renderRight(options);
+}
+helpBtn.onclick = handleHelpClick;
+helpBtnTop.onclick = handleHelpClick;
+
+// --- Preparación con resumen ---
+function prepareData(){
+  const sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1ku8Bwcp5dau8z-3zbILSBb0sQ-Kw62Peznvqv-Q0j9_h-uzkq1m6DS4Q8ZFv1On44lnMNtuyVYQl/pub?output=csv";
+  fetch(sheetUrl)
+    .then(res => res.text())
+    .then(csvText => {
+      const parsed = Papa.parse(csvText, { header: true });
+      const srs = getSRSData();
+      const today = todayISO();
+      let due = 0, future = 0;
+
+      let rows = parsed.data.map(row => ({
+        id: row["ID"],
+        question: row["Pregunta"]?.trim(),
+        answer: row["Respuesta"]?.trim(),
+        distractors: [row["Distractor 1"]?.trim(), row["Distractor 2"]?.trim(), row["Distractor 3"]?.trim()],
+        info: row["Info"]?.trim() || "",
+        solved: false
+      })).filter(p => p.question && p.answer);
+
+      // Contar y filtrar
+      rows.forEach(r=>{
+        let info = srs[r.id];
+        if (!info || info.dueDate <= today) due++; else future++;
+      });
+
+      if (!confirm(`Total tarjetas: ${rows.length}\nDisponibles hoy: ${due}\nProgramadas para más adelante: ${future}\n\n¿Quieres continuar?`)) {
+        return;
+      }
+
+      // Filtrar solo las que están vencidas
+      allPairs = rows.filter(r=>{
+        const d = srs[r.id];
+        return !d || d.dueDate <= today;
+      });
+
+      // Ordenar por wrongCount (mayor primero)
+      allPairs.sort((a,b)=>{
+        let sa = srs[a.id]?.wrongCount || 0;
+        let sb = srs[b.id]?.wrongCount || 0;
+        return sb - sa;
+      });
+
+      const numTerms = parseInt(document.getElementById("numTerms").value, 10);
+      allPairs = allPairs.slice(0,numTerms);
+
+      if (allPairs.length===0){ alert("No hay tarjetas para hoy"); return; }
+
+      pairs = JSON.parse(JSON.stringify(allPairs));
+      score = {correct:0, wrong:0};
+      helpMode = false;
+      showInfo("");
+
+      document.getElementById("setup").style.display = "none";
+      document.getElementById("game").style.display = "flex";
+      helpBtn.style.display = "inline-block";
+      helpBtnTop.style.display = "inline-block";
+      backBtn.style.display = "inline-block";
+      resetBtn.style.display = "inline-block";
+      clearHistoryBtn.style.display = "inline-block";
+
+      render();
+    })
+    .catch(err => alert("Error al cargar los datos: " + err));
+}
+
+function resetGame() {
+  pairs = JSON.parse(JSON.stringify(allPairs));
+  score = {correct:0, wrong:0};
+  helpMode = false;
+  showInfo("");
+  render();
+}
+
+function goBack() {
+  document.getElementById("setup").style.display = "block";
+  document.getElementById("game").style.display = "none";
+  helpBtn.style.display = "none";
+  helpBtnTop.style.display = "none";
+  backBtn.style.display = "none";
+  resetBtn.style.display = "none";
+  clearHistoryBtn.style.display = "none";
+  showInfo("");
+}
+</script>
+
+</body>
+</html>

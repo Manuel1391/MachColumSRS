@@ -20,14 +20,22 @@
   .item:hover { background: #eaeaea; transform: scale(1.02); }
   .correct { background: #c8f7c5 !important; cursor: default !important; }
   .wrong { background: #f7c5c5 !important; }
+  .selected { background: #d0e7ff !important; }
   #helpBtnTop, #helpBtn, #backBtn, #resetBtn, #clearHistoryBtn { padding: 10px 20px; display:none;}
   #setup { max-width: 700px; margin: auto; }
   textarea { width: 100%; height: 180px; margin-bottom: 10px; }
-  button { padding: 10px 20px; margin:5px;}
+  button { padding: 10px 20px; margin-right:10px;}
   .infoBox {
     max-width: 600px; margin: 20px auto; padding: 15px;
     background: #fff8d5; border: 1px solid #ccc; border-radius: 10px;
     display:none; font-size: 1.1em; line-height: 1.4em;
+  }
+  .memory-controls { text-align:center; margin-top:10px; }
+  .memory-controls textarea {
+    width: 95%;
+    height: 60px;
+    margin-top: 10px;
+    display: none;
   }
   .difficulty-buttons {
     margin-top: 10px;
@@ -36,15 +44,6 @@
   .difficulty-buttons button {
     padding: 8px 16px;
     margin: 5px;
-  }
-  .memory-test {
-    margin-top: 15px;
-    text-align: center;
-  }
-  .memory-test textarea {
-    width: 90%;
-    height: 80px;
-    font-size: 1em;
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
@@ -96,6 +95,7 @@ let pairs = [];
 let selectedQuestion = null;
 let score = {correct:0, wrong:0};
 let helpMode = false;
+let waitingDifficulty = false;
 
 // --- SRS LocalStorage ---
 function getSRSData(){
@@ -118,15 +118,10 @@ function addDays(dateStr, days){
   d.setDate(d.getDate()+days);
   return d.toISOString().slice(0,10);
 }
-
-// Normalizar texto para comparar
-function normalizeText(txt) {
-  return txt
-    .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g,"") // quita tildes
-    .replace(/[^a-z0-9\s]/g,"") // quita puntuación
-    .replace(/\s+/g," ") // espacios simples
-    .trim();
+function normalize(str){
+  return str.toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+            .replace(/[.,!?;:]/g,"").trim();
 }
 
 // --- UI Elements ---
@@ -137,6 +132,7 @@ const helpBtnTop = document.getElementById("helpBtnTop");
 const backBtn = document.getElementById("backBtn");
 const resetBtn = document.getElementById("resetBtn");
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+const infoBox = document.getElementById("infoBox");
 const infoBoxTop = document.getElementById("infoBoxTop");
 
 // --- Sonidos ---
@@ -177,83 +173,114 @@ function render() {
     const div = document.createElement("div");
     div.className = "item";
     div.textContent = p.question;
-    if (p.solved) div.classList.add("correct");
-    else div.onclick = () => { selectedQuestion = p; helpMode=false; };
+    if (p.solved) {
+      div.classList.add("correct");
+    } else {
+      div.onclick = () => {
+        selectedQuestion = p; 
+        helpMode=false; 
+        highlightSelection();
+      };
+    }
     leftCol.appendChild(div);
   });
   let remainingAnswers = pairs.filter(p => !p.solved).map(p => p.answer);
   renderRight(shuffle([...new Set(remainingAnswers)]));
 }
 
-// Mostrar información y botones SOLO en la parte superior
-function showInfo(text, id=null) {
-  infoBoxTop.innerHTML = "";
-  if (!text) { 
-    infoBoxTop.style.display = "none"; 
-    return; 
+function highlightSelection() {
+  const items = document.querySelectorAll("#left .item");
+  items.forEach(i => i.classList.remove("selected"));
+  if (selectedQuestion) {
+    items.forEach(i => {
+      if (i.textContent === selectedQuestion.question) {
+        i.classList.add("selected");
+      }
+    });
   }
-
-  // Texto
-  const content = document.createElement("div");
-  content.textContent = text;
-  infoBoxTop.appendChild(content);
-
-  // Botón memoria
-  const memBtn = document.createElement("button");
-  memBtn.textContent = "Ocultar y probar memoria";
-  memBtn.onclick = () => startMemoryTest(text, id);
-  infoBoxTop.appendChild(memBtn);
-
-  // Botones dificultad
-  if (id) {
-    const buttonsDiv = document.createElement("div");
-    buttonsDiv.className = "difficulty-buttons";
-    buttonsDiv.innerHTML = `
-      <button onclick="markDifficulty('${id}', 'easy')">Fácil</button>
-      <button onclick="markDifficulty('${id}', 'hard')">Difícil</button>`;
-    infoBoxTop.appendChild(buttonsDiv);
-  }
-
-  infoBoxTop.style.display = "block";
 }
 
-// Prueba de memoria
-function startMemoryTest(original, id) {
+function showInfo(text, id=null) {
+  infoBox.innerHTML = "";
   infoBoxTop.innerHTML = "";
+  if (text) {
+    infoBox.style.display = "block";
+    infoBoxTop.style.display = "block";
 
-  const container = document.createElement("div");
-  container.className = "memory-test";
+    let content = document.createElement("div");
+    content.textContent = text;
+    infoBox.appendChild(content);
+    infoBoxTop.appendChild(content.cloneNode(true));
 
-  const textarea = document.createElement("textarea");
-  textarea.placeholder = "Escribe aquí la oración de memoria...";
-  container.appendChild(textarea);
+    // Controles de memoria
+    let controls = document.createElement("div");
+    controls.className = "memory-controls";
+    controls.innerHTML = `
+      <button onclick="startMemoryTest('${id}')">Ocultar y probar memoria</button>
+      <button onclick="giveUp()">Rendirse</button>
+      <textarea id="memoryInput" placeholder="Escribe aquí la oración..."></textarea>
+      <button onclick="checkMemory('${id}')">Comprobar</button>
+    `;
+    infoBox.appendChild(controls);
+    infoBoxTop.appendChild(controls.cloneNode(true));
 
-  const checkBtn = document.createElement("button");
-  checkBtn.textContent = "Comprobar";
-  checkBtn.onclick = () => {
-    if (normalizeText(textarea.value) === normalizeText(original)) {
-      alert("¡Correcto! Pasemos a la siguiente tarjeta.");
-      showInfo(""); 
-      render();
+    // Botones dificultad (aparecerán después de pasar la memoria)
+    let buttonsDiv = document.createElement("div");
+    buttonsDiv.className = "difficulty-buttons";
+    buttonsDiv.innerHTML = `
+      <button id="easyBtn" onclick="markDifficulty('${id}', 'easy')">Fácil</button>
+      <button id="hardBtn" onclick="markDifficulty('${id}', 'hard')">Difícil</button>`;
+    infoBox.appendChild(buttonsDiv);
+    infoBoxTop.appendChild(buttonsDiv.cloneNode(true));
+  } else {
+    infoBox.style.display = "none";
+    infoBoxTop.style.display = "none";
+  }
+}
+
+function startMemoryTest(id) {
+  const text = selectedQuestion.info;
+  document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box => {
+    box.querySelector("div").style.visibility = "hidden";
+    const textarea = box.querySelector("textarea");
+    textarea.style.display = "block";
+    textarea.value = "";
+  });
+}
+
+function checkMemory(id) {
+  const original = normalize(selectedQuestion.info);
+  let ok = true;
+  document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box => {
+    const textarea = box.querySelector("textarea");
+    const userText = normalize(textarea.value);
+    if (userText === original) {
+      alert("¡Correcto! Ahora marca la dificultad.");
+      textarea.style.display = "none";
+      box.querySelector("div").style.visibility = "visible";
     } else {
-      alert("No coincide, intenta de nuevo.");
+      alert("No coincide, intenta otra vez o usa 'Rendirse'.");
+      ok = false;
     }
-  };
-  container.appendChild(checkBtn);
+  });
+  if (ok) waitingDifficulty = true;
+}
 
-  const giveUpBtn = document.createElement("button");
-  giveUpBtn.textContent = "Rendirse";
-  giveUpBtn.onclick = () => {
-    // Mostrar de nuevo la oración y permitir continuar
-    alert("La oración era:\n" + original);
-    showInfo(original, id);
-  };
-  container.appendChild(giveUpBtn);
-
-  infoBoxTop.appendChild(container);
+function giveUp() {
+  alert("Respuesta revelada. Marca la dificultad para continuar.");
+  document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box => {
+    const textarea = box.querySelector("textarea");
+    textarea.style.display = "none";
+    box.querySelector("div").style.visibility = "visible";
+  });
+  waitingDifficulty = true;
 }
 
 function markDifficulty(id, level) {
+  if (!waitingDifficulty) {
+    alert("Primero completa o rinde la prueba de memoria.");
+    return;
+  }
   const data = getSRSData();
   if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
   let d = data[id];
@@ -261,7 +288,6 @@ function markDifficulty(id, level) {
     d.wrongCount += 2;  
     d.interval = 1;
     d.dueDate = todayISO();
-
     let card = allPairs.find(c => c.id === id);
     if (card) {
       card.solved = false;
@@ -272,6 +298,7 @@ function markDifficulty(id, level) {
     d.dueDate = addDays(todayISO(), d.interval);
   }
   saveSRSData(data);
+  waitingDifficulty = false;
   showInfo(""); 
   render();
 }
@@ -309,12 +336,13 @@ function handleRightClick(txt) {
     leftItems.forEach(li=>{ if (li.textContent === selectedQuestion.question) li.classList.add("correct"); });
     allAnswers.forEach(a=>{ if (a.textContent === txt) a.classList.add("correct"); });
 
-    if (helpMode) { helpMode = false; setTimeout(render, 300); } else { render(); }
+    highlightSelection();
+
+    if (helpMode) { helpMode = false; setTimeout(render, 300); }
 
     if (pairs.every(p=>p.solved)) {
       setTimeout(()=>alert(`¡Completaste todos!\nAciertos: ${score.correct}\nErrores: ${score.wrong}`),100);
     }
-    selectedQuestion = null;
   } else {
     playWrongSound();
     score.wrong++;

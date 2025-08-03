@@ -163,6 +163,16 @@ function highlightSelection() {
 }
 
 // --- MEMORIA ---
+// --- MEMORIA ---
+function getActiveMemoryTextarea() {
+  // Busca el textarea que esté visible (display: block)
+  const all = document.querySelectorAll("#infoBox textarea, #infoBoxTop textarea");
+  for (let t of all) {
+    if (t.style.display === "block") return t;
+  }
+  return all[0]; // por defecto el primero
+}
+
 function updateMemoryButtons(active) {
   document.querySelectorAll(".memory-controls").forEach(mc=>{
     const btnHide = mc.querySelector("button:nth-child(1)");
@@ -172,7 +182,6 @@ function updateMemoryButtons(active) {
     if (active) {
       btnHide.disabled = true;
       btnGiveUp.disabled = false;
-      btnCheck.disabled = false ? false : false; // corregido
       btnCheck.disabled = false;
     } else {
       btnHide.disabled = false;
@@ -219,17 +228,17 @@ function startMemoryTest(id) {
   });
   updateMemoryButtons(true);
 }
-function checkMemory(id) {
-  const textarea = document.querySelector("#infoBox textarea");
-  const userText = normalize(textarea.value);
-  const correctText = normalize(selectedQuestion.info);
 
+function checkMemory(id) {
+  const textarea = getActiveMemoryTextarea();
+  const userText = normalize(textarea.value);
+  const correctText = normalize(selectedQuestion.info); // usa la oración de la tarjeta
   if (userText === correctText) {
     alert("¡Correcto! Ahora marca la dificultad.");
-    document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box => {
+    document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box=>{
       const t = box.querySelector("textarea");
-      t.style.display = "none";
-      box.querySelector("div").style.visibility = "visible";
+      t.style.display="none";
+      box.querySelector("div").style.visibility="visible";
     });
     updateMemoryButtons(false);
     waitingDifficulty = true;
@@ -237,6 +246,7 @@ function checkMemory(id) {
     alert("No coincide, intenta otra vez o usa 'Rendirse'.");
   }
 }
+
 function giveUp() {
   alert("Respuesta correcta:\n" + selectedQuestion.info);
   document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box=>{

@@ -23,7 +23,7 @@
   #helpBtnTop, #helpBtn, #backBtn, #resetBtn, #clearHistoryBtn { padding: 10px 20px; display:none;}
   #setup { max-width: 700px; margin: auto; }
   textarea { width: 100%; height: 180px; margin-bottom: 10px; }
-  button { padding: 10px 20px; margin-right:10px;}
+  button { padding: 10px 20px; margin:5px;}
   .infoBox {
     max-width: 600px; margin: 20px auto; padding: 15px;
     background: #fff8d5; border: 1px solid #ccc; border-radius: 10px;
@@ -36,6 +36,15 @@
   .difficulty-buttons button {
     padding: 8px 16px;
     margin: 5px;
+  }
+  .memory-test {
+    margin-top: 15px;
+    text-align: center;
+  }
+  .memory-test textarea {
+    width: 90%;
+    height: 80px;
+    font-size: 1em;
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
@@ -110,6 +119,16 @@ function addDays(dateStr, days){
   return d.toISOString().slice(0,10);
 }
 
+// Normalizar texto para comparar
+function normalizeText(txt) {
+  return txt
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"") // quita tildes
+    .replace(/[^a-z0-9\s]/g,"") // quita puntuación
+    .replace(/\s+/g," ") // espacios simples
+    .trim();
+}
+
 // --- UI Elements ---
 const leftCol = document.getElementById("left");
 const rightCol = document.getElementById("right");
@@ -168,11 +187,21 @@ function render() {
 }
 
 function showInfo(text, id=null) {
+  infoBox.innerHTML = "";
+  infoBoxTop.innerHTML = "";
+
   if (text) {
-    infoBox.innerHTML = text;
-    infoBox.style.display = "block";
-    infoBoxTop.innerHTML = text;
-    infoBoxTop.style.display = "block";
+    const content = document.createElement("div");
+    content.textContent = text;
+    infoBox.appendChild(content);
+    infoBoxTop.appendChild(content.cloneNode(true));
+
+    // Botón para activar práctica de memoria
+    const memBtn = document.createElement("button");
+    memBtn.textContent = "Ocultar y probar memoria";
+    memBtn.onclick = () => startMemoryTest(text, id);
+    infoBox.appendChild(memBtn);
+    infoBoxTop.appendChild(memBtn.cloneNode(true));
 
     if (id) {
       const buttonsDiv = document.createElement("div");
@@ -183,10 +212,42 @@ function showInfo(text, id=null) {
       infoBox.appendChild(buttonsDiv);
       infoBoxTop.appendChild(buttonsDiv.cloneNode(true));
     }
+
+    infoBox.style.display = "block";
+    infoBoxTop.style.display = "block";
   } else {
     infoBox.style.display = "none";
     infoBoxTop.style.display = "none";
   }
+}
+
+// Iniciar prueba de memoria
+function startMemoryTest(original, id) {
+  infoBox.innerHTML = "";
+  infoBoxTop.innerHTML = "";
+
+  const container = document.createElement("div");
+  container.className = "memory-test";
+
+  const textarea = document.createElement("textarea");
+  textarea.placeholder = "Escribe aquí la oración de memoria...";
+  container.appendChild(textarea);
+
+  const checkBtn = document.createElement("button");
+  checkBtn.textContent = "Comprobar";
+  checkBtn.onclick = () => {
+    if (normalizeText(textarea.value) === normalizeText(original)) {
+      alert("¡Correcto! Pasemos a la siguiente tarjeta.");
+      showInfo(""); // limpiar
+      render();
+    } else {
+      alert("No coincide, intenta de nuevo.");
+    }
+  };
+  container.appendChild(checkBtn);
+
+  infoBox.appendChild(container);
+  infoBoxTop.appendChild(container.cloneNode(true));
 }
 
 function markDifficulty(id, level) {
@@ -198,7 +259,6 @@ function markDifficulty(id, level) {
     d.interval = 1;
     d.dueDate = todayISO();
 
-    // Reforzar en la misma sesión
     let card = allPairs.find(c => c.id === id);
     if (card) {
       card.solved = false;
@@ -211,7 +271,7 @@ function markDifficulty(id, level) {
   }
   saveSRSData(data);
   showInfo(""); 
-  render(); // actualizar lista
+  render();
 }
 
 function updateSRSOnCorrect(id){

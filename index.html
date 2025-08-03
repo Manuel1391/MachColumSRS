@@ -197,8 +197,13 @@ function showInfo(text, id=null) {
   if (text) {
     infoBox.style.display = "block"; infoBoxTop.style.display = "block";
     const content = document.createElement("div");
-    content.textContent = text;
-    infoBox.appendChild(content); infoBoxTop.appendChild(content.cloneNode(true));
+content.innerHTML = `
+  <div>${text}</div>
+  ${selectedQuestion.ipa ? `<div style="font-size: 0.9em; color: #555; margin-top: 5px;">${selectedQuestion.ipa}</div>` : ""}
+`;
+infoBox.appendChild(content);
+infoBoxTop.appendChild(content.cloneNode(true));
+
     const controls = document.createElement("div");
     controls.className = "memory-controls";
     controls.innerHTML = `
@@ -314,7 +319,7 @@ function prepareData(){
       let rows = parsed.data.map(row => ({
         id: row["ID"], question: row["Pregunta"]?.trim(), answer: row["Respuesta"]?.trim(),
         distractors: [row["Distractor 1"]?.trim(), row["Distractor 2"]?.trim(), row["Distractor 3"]?.trim()],
-        info: row["Info"]?.trim() || "", solved: false
+        info: row["Info"]?.trim(), ipa: row["IPA"]?.trim() || "", solved: false
       })).filter(p => p.question && p.answer);
       let due=0,future=0;
       rows.forEach(r=>{let info = srs[r.id]; if (!info || info.dueDate <= today) due++; else future++;});

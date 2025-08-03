@@ -170,6 +170,7 @@ function updateMemoryButtons(active) {
     if (active) {
       btnHide.disabled = true;
       btnGiveUp.disabled = false;
+      btnCheck.disabled = false ? false : false; // corregido
       btnCheck.disabled = false;
     } else {
       btnHide.disabled = false;
@@ -219,7 +220,7 @@ function startMemoryTest(id) {
 function checkMemory(id) {
   const textarea = document.querySelector("#infoBox textarea");
   const userText = normalize(textarea.value);
-  const correctText = normalize(selectedQuestion.info);
+  const correctText = normalize(selectedQuestion.info); // SIEMPRE desde variable
   if (userText === correctText) {
     alert("¡Correcto! Ahora marca la dificultad.");
     document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box=>{
@@ -234,8 +235,7 @@ function checkMemory(id) {
   }
 }
 function giveUp() {
-  const userText = document.querySelector("#infoBox textarea").value;
-  alert("Tu respuesta:\n" + userText + "\n\nRespuesta correcta:\n" + selectedQuestion.info);
+  alert("Respuesta correcta:\n" + selectedQuestion.info);
   document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box=>{
     const t = box.querySelector("textarea");
     t.style.display="none";
@@ -247,7 +247,7 @@ function giveUp() {
 
 // --- JUEGO ---
 function markDifficulty(id, level) {
-  if (!waitingDifficulty) { alert("Primero completa o rinde la prueba de memoria."); return; }
+  // YA NO exigimos prueba de memoria previa
   const data = getSRSData();
   if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
   let d = data[id];
@@ -324,12 +324,8 @@ function prepareData(){
     })
     .catch(err => alert("Error al cargar los datos: " + err));
 }
-function resetGame() { pairs = JSON.parse(JSON.stringify(allPairs)); score = {correct:0, wrong:0}; helpMode = false; showInfo(""); render();}
-function goBack() {
-  document.getElementById("setup").style.display="block"; document.getElementById("game").style.display="none";
-  helpBtn.style.display="none"; helpBtnTop.style.display="none"; backBtn.style.display="none";
-  resetBtn.style.display="none"; clearHistoryBtn.style.display="none"; showInfo("");
-}
+function resetGame(){ pairs=JSON.parse(JSON.stringify(allPairs)); score={correct:0,wrong:0}; helpMode=false; showInfo(""); render();}
+function goBack(){ document.getElementById("setup").style.display="block"; document.getElementById("game").style.display="none"; helpBtn.style.display="none"; helpBtnTop.style.display="none"; backBtn.style.display="none"; resetBtn.style.display="none"; clearHistoryBtn.style.display="none"; showInfo(""); }
 </script>
 
 </body>

@@ -137,7 +137,6 @@ const helpBtnTop = document.getElementById("helpBtnTop");
 const backBtn = document.getElementById("backBtn");
 const resetBtn = document.getElementById("resetBtn");
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
-const infoBox = document.getElementById("infoBox");
 const infoBoxTop = document.getElementById("infoBoxTop");
 
 // --- Sonidos ---
@@ -186,44 +185,40 @@ function render() {
   renderRight(shuffle([...new Set(remainingAnswers)]));
 }
 
+// Mostrar información y botones SOLO en la parte superior
 function showInfo(text, id=null) {
-  infoBox.innerHTML = "";
   infoBoxTop.innerHTML = "";
-
-  if (text) {
-    const content = document.createElement("div");
-    content.textContent = text;
-    infoBox.appendChild(content);
-    infoBoxTop.appendChild(content.cloneNode(true));
-
-    // Botón para activar práctica de memoria
-    const memBtn = document.createElement("button");
-    memBtn.textContent = "Ocultar y probar memoria";
-    memBtn.onclick = () => startMemoryTest(text, id);
-    infoBox.appendChild(memBtn);
-    infoBoxTop.appendChild(memBtn.cloneNode(true));
-
-    if (id) {
-      const buttonsDiv = document.createElement("div");
-      buttonsDiv.className = "difficulty-buttons";
-      buttonsDiv.innerHTML = `
-        <button onclick="markDifficulty('${id}', 'easy')">Fácil</button>
-        <button onclick="markDifficulty('${id}', 'hard')">Difícil</button>`;
-      infoBox.appendChild(buttonsDiv);
-      infoBoxTop.appendChild(buttonsDiv.cloneNode(true));
-    }
-
-    infoBox.style.display = "block";
-    infoBoxTop.style.display = "block";
-  } else {
-    infoBox.style.display = "none";
-    infoBoxTop.style.display = "none";
+  if (!text) { 
+    infoBoxTop.style.display = "none"; 
+    return; 
   }
+
+  // Texto
+  const content = document.createElement("div");
+  content.textContent = text;
+  infoBoxTop.appendChild(content);
+
+  // Botón memoria
+  const memBtn = document.createElement("button");
+  memBtn.textContent = "Ocultar y probar memoria";
+  memBtn.onclick = () => startMemoryTest(text, id);
+  infoBoxTop.appendChild(memBtn);
+
+  // Botones dificultad
+  if (id) {
+    const buttonsDiv = document.createElement("div");
+    buttonsDiv.className = "difficulty-buttons";
+    buttonsDiv.innerHTML = `
+      <button onclick="markDifficulty('${id}', 'easy')">Fácil</button>
+      <button onclick="markDifficulty('${id}', 'hard')">Difícil</button>`;
+    infoBoxTop.appendChild(buttonsDiv);
+  }
+
+  infoBoxTop.style.display = "block";
 }
 
-// Iniciar prueba de memoria
+// Prueba de memoria
 function startMemoryTest(original, id) {
-  infoBox.innerHTML = "";
   infoBoxTop.innerHTML = "";
 
   const container = document.createElement("div");
@@ -238,7 +233,7 @@ function startMemoryTest(original, id) {
   checkBtn.onclick = () => {
     if (normalizeText(textarea.value) === normalizeText(original)) {
       alert("¡Correcto! Pasemos a la siguiente tarjeta.");
-      showInfo(""); // limpiar
+      showInfo(""); 
       render();
     } else {
       alert("No coincide, intenta de nuevo.");
@@ -246,8 +241,16 @@ function startMemoryTest(original, id) {
   };
   container.appendChild(checkBtn);
 
-  infoBox.appendChild(container);
-  infoBoxTop.appendChild(container.cloneNode(true));
+  const giveUpBtn = document.createElement("button");
+  giveUpBtn.textContent = "Rendirse";
+  giveUpBtn.onclick = () => {
+    // Mostrar de nuevo la oración y permitir continuar
+    alert("La oración era:\n" + original);
+    showInfo(original, id);
+  };
+  container.appendChild(giveUpBtn);
+
+  infoBoxTop.appendChild(container);
 }
 
 function markDifficulty(id, level) {
@@ -264,7 +267,6 @@ function markDifficulty(id, level) {
       card.solved = false;
       pairs.push(card);
     }
-
   } else {
     d.interval = d.interval * 2;
     d.dueDate = addDays(todayISO(), d.interval);

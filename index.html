@@ -97,34 +97,21 @@ let score = {correct:0, wrong:0};
 let helpMode = false;
 let waitingDifficulty = false;
 
-// --- SRS LocalStorage ---
-function getSRSData(){
-  return JSON.parse(localStorage.getItem("srsData") || "{}");
-}
-function saveSRSData(data){
-  localStorage.setItem("srsData", JSON.stringify(data));
-}
-function clearSRS(){
-  localStorage.removeItem("srsData");
-  alert("Historial SRS borrado.");
-}
+function getSRSData(){ return JSON.parse(localStorage.getItem("srsData") || "{}"); }
+function saveSRSData(data){ localStorage.setItem("srsData", JSON.stringify(data)); }
+function clearSRS(){ localStorage.removeItem("srsData"); alert("Historial SRS borrado."); }
 
-// --- Utilidades ---
-function todayISO(){
-  return new Date().toISOString().slice(0,10);
-}
-function addDays(dateStr, days){
-  const d = new Date(dateStr);
-  d.setDate(d.getDate()+days);
-  return d.toISOString().slice(0,10);
-}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function addDays(dateStr, days){ const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
 function normalize(str){
-  return str.toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
-            .replace(/[.,!?;:]/g,"").trim();
+  return (str||"").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9 ]/g,"")
+    .replace(/\s+/g," ")
+    .trim();
 }
 
-// --- UI Elements ---
+// UI
 const leftCol = document.getElementById("left");
 const rightCol = document.getElementById("right");
 const helpBtn = document.getElementById("helpBtn");
@@ -135,25 +122,12 @@ const clearHistoryBtn = document.getElementById("clearHistoryBtn");
 const infoBox = document.getElementById("infoBox");
 const infoBoxTop = document.getElementById("infoBoxTop");
 
-// --- Sonidos ---
 let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 function ensureAudioContext() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
-function playTone(frequency, duration) {
-  ensureAudioContext();
-  const oscillator = audioCtx.createOscillator();
-  const gainNode = audioCtx.createGain();
-  oscillator.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-  oscillator.type = "sine";
-  oscillator.frequency.value = frequency;
-  gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
-  oscillator.start();
-  oscillator.stop(audioCtx.currentTime + duration);
-}
+function playTone(frequency, duration) { ensureAudioContext(); const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.connect(g); g.connect(audioCtx.destination); o.type = "sine"; o.frequency.value = frequency; g.gain.setValueAtTime(0.2, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + duration);}
 function playCorrectSound() { playTone(600, 0.15); setTimeout(()=>playTone(900, 0.15), 150); }
 function playWrongSound() { playTone(200, 0.2); setTimeout(()=>playTone(100, 0.2), 200); }
 
-// --- Juego ---
 function shuffle(array) { return array.sort(() => Math.random() - 0.5); }
 
 function renderRight(options) {
@@ -166,54 +140,54 @@ function renderRight(options) {
     rightCol.appendChild(div);
   });
 }
-
 function render() {
   leftCol.innerHTML = "";
   shuffle(pairs).forEach(p => {
     const div = document.createElement("div");
     div.className = "item";
     div.textContent = p.question;
-    if (p.solved) {
-      div.classList.add("correct");
-    } else {
-      div.onclick = () => {
-        selectedQuestion = p; 
-        helpMode=false; 
-        highlightSelection();
-      };
-    }
+    if (p.solved) div.classList.add("correct");
+    else div.onclick = () => { selectedQuestion = p; helpMode=false; highlightSelection(); };
     leftCol.appendChild(div);
   });
   let remainingAnswers = pairs.filter(p => !p.solved).map(p => p.answer);
   renderRight(shuffle([...new Set(remainingAnswers)]));
 }
-
 function highlightSelection() {
-  const items = document.querySelectorAll("#left .item");
-  items.forEach(i => i.classList.remove("selected"));
+  document.querySelectorAll("#left .item").forEach(i=>i.classList.remove("selected"));
   if (selectedQuestion) {
-    items.forEach(i => {
-      if (i.textContent === selectedQuestion.question) {
-        i.classList.add("selected");
-      }
-    });
+    document.querySelectorAll("#left .item").forEach(i=>{ if (i.textContent === selectedQuestion.question) i.classList.add("selected"); });
   }
+}
+
+// --- MEMORIA ---
+function updateMemoryButtons(active) {
+  document.querySelectorAll(".memory-controls").forEach(mc=>{
+    const btnHide = mc.querySelector("button:nth-child(1)");
+    const btnGiveUp = mc.querySelector("button:nth-child(2)");
+    const txt = mc.querySelector("textarea");
+    const btnCheck = mc.querySelector("button:nth-child(4)");
+    if (active) {
+      btnHide.disabled = true;
+      btnGiveUp.disabled = false;
+      btnCheck.disabled = false;
+    } else {
+      btnHide.disabled = false;
+      btnGiveUp.disabled = true;
+      btnCheck.disabled = true;
+    }
+  });
 }
 
 function showInfo(text, id=null) {
   infoBox.innerHTML = "";
   infoBoxTop.innerHTML = "";
   if (text) {
-    infoBox.style.display = "block";
-    infoBoxTop.style.display = "block";
-
-    let content = document.createElement("div");
+    infoBox.style.display = "block"; infoBoxTop.style.display = "block";
+    const content = document.createElement("div");
     content.textContent = text;
-    infoBox.appendChild(content);
-    infoBoxTop.appendChild(content.cloneNode(true));
-
-    // Controles de memoria
-    let controls = document.createElement("div");
+    infoBox.appendChild(content); infoBoxTop.appendChild(content.cloneNode(true));
+    const controls = document.createElement("div");
     controls.className = "memory-controls";
     controls.innerHTML = `
       <button onclick="startMemoryTest('${id}')">Ocultar y probar memoria</button>
@@ -221,138 +195,90 @@ function showInfo(text, id=null) {
       <textarea id="memoryInput" placeholder="Escribe aquí la oración..."></textarea>
       <button onclick="checkMemory('${id}')">Comprobar</button>
     `;
-    infoBox.appendChild(controls);
-    infoBoxTop.appendChild(controls.cloneNode(true));
-
-    // Botones dificultad (aparecerán después de pasar la memoria)
-    let buttonsDiv = document.createElement("div");
+    infoBox.appendChild(controls); infoBoxTop.appendChild(controls.cloneNode(true));
+    updateMemoryButtons(false);
+    const buttonsDiv = document.createElement("div");
     buttonsDiv.className = "difficulty-buttons";
     buttonsDiv.innerHTML = `
-      <button id="easyBtn" onclick="markDifficulty('${id}', 'easy')">Fácil</button>
-      <button id="hardBtn" onclick="markDifficulty('${id}', 'hard')">Difícil</button>`;
-    infoBox.appendChild(buttonsDiv);
-    infoBoxTop.appendChild(buttonsDiv.cloneNode(true));
+      <button onclick="markDifficulty('${id}', 'easy')">Fácil</button>
+      <button onclick="markDifficulty('${id}', 'hard')">Difícil</button>`;
+    infoBox.appendChild(buttonsDiv); infoBoxTop.appendChild(buttonsDiv.cloneNode(true));
   } else {
-    infoBox.style.display = "none";
-    infoBoxTop.style.display = "none";
+    infoBox.style.display = "none"; infoBoxTop.style.display = "none";
   }
 }
 
 function startMemoryTest(id) {
-  const text = selectedQuestion.info;
   document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box => {
     box.querySelector("div").style.visibility = "hidden";
     const textarea = box.querySelector("textarea");
-    textarea.style.display = "block";
-    textarea.value = "";
+    textarea.style.display = "block"; textarea.value = "";
   });
+  updateMemoryButtons(true);
 }
-
 function checkMemory(id) {
-  const original = normalize(selectedQuestion.info);
-  let ok = true;
-  document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box => {
-    const textarea = box.querySelector("textarea");
-    const userText = normalize(textarea.value);
-    if (userText === original) {
-      alert("¡Correcto! Ahora marca la dificultad.");
-      textarea.style.display = "none";
-      box.querySelector("div").style.visibility = "visible";
-    } else {
-      alert("No coincide, intenta otra vez o usa 'Rendirse'.");
-      ok = false;
-    }
-  });
-  if (ok) waitingDifficulty = true;
+  const textarea = document.querySelector("#infoBox textarea");
+  const userText = normalize(textarea.value);
+  const correctText = normalize(selectedQuestion.info);
+  if (userText === correctText) {
+    alert("¡Correcto! Ahora marca la dificultad.");
+    document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box=>{
+      const t = box.querySelector("textarea");
+      t.style.display="none";
+      box.querySelector("div").style.visibility="visible";
+    });
+    updateMemoryButtons(false);
+    waitingDifficulty = true;
+  } else {
+    alert("No coincide, intenta otra vez o usa 'Rendirse'.");
+  }
 }
-
 function giveUp() {
-  alert("Respuesta revelada. Marca la dificultad para continuar.");
-  document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box => {
-    const textarea = box.querySelector("textarea");
-    textarea.style.display = "none";
-    box.querySelector("div").style.visibility = "visible";
+  const userText = document.querySelector("#infoBox textarea").value;
+  alert("Tu respuesta:\n" + userText + "\n\nRespuesta correcta:\n" + selectedQuestion.info);
+  document.querySelectorAll("#infoBox, #infoBoxTop").forEach(box=>{
+    const t = box.querySelector("textarea");
+    t.style.display="none";
+    box.querySelector("div").style.visibility="visible";
   });
+  updateMemoryButtons(false);
   waitingDifficulty = true;
 }
 
+// --- JUEGO ---
 function markDifficulty(id, level) {
-  if (!waitingDifficulty) {
-    alert("Primero completa o rinde la prueba de memoria.");
-    return;
-  }
+  if (!waitingDifficulty) { alert("Primero completa o rinde la prueba de memoria."); return; }
   const data = getSRSData();
   if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
   let d = data[id];
   if (level === 'hard') {
-    d.wrongCount += 2;  
-    d.interval = 1;
-    d.dueDate = todayISO();
+    d.wrongCount += 2; d.interval = 1; d.dueDate = todayISO();
     let card = allPairs.find(c => c.id === id);
-    if (card) {
-      card.solved = false;
-      pairs.push(card);
-    }
+    if (card) { card.solved = false; pairs.push(card); }
   } else {
-    d.interval = d.interval * 2;
-    d.dueDate = addDays(todayISO(), d.interval);
+    d.interval = d.interval * 2; d.dueDate = addDays(todayISO(), d.interval);
   }
   saveSRSData(data);
   waitingDifficulty = false;
-  showInfo(""); 
-  render();
+  showInfo(""); render();
 }
-
-function updateSRSOnCorrect(id){
-  const data = getSRSData();
-  if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
-  let d = data[id];
-  d.interval = d.interval * 2;
-  d.dueDate = addDays(todayISO(), d.interval);
-  saveSRSData(data);
-}
-function updateSRSOnWrong(id){
-  const data = getSRSData();
-  if (!data[id]) data[id] = {dueDate: todayISO(), wrongCount:0, interval:1};
-  let d = data[id];
-  d.wrongCount += 1;
-  d.interval = 1;
-  d.dueDate = todayISO();
-  saveSRSData(data);
-}
+function updateSRSOnCorrect(id){ const data = getSRSData(); if (!data[id]) data[id]={dueDate: todayISO(),wrongCount:0,interval:1}; let d=data[id]; d.interval*=2; d.dueDate=addDays(todayISO(),d.interval); saveSRSData(data);}
+function updateSRSOnWrong(id){ const data = getSRSData(); if (!data[id]) data[id]={dueDate: todayISO(),wrongCount:0,interval:1}; let d=data[id]; d.wrongCount++; d.interval=1; d.dueDate=todayISO(); saveSRSData(data);}
 
 function handleRightClick(txt) {
   if (!selectedQuestion || selectedQuestion.solved) return;
   const allAnswers = document.querySelectorAll("#right .item");
   const leftItems = document.querySelectorAll("#left .item");
-
   if (txt === selectedQuestion.answer) {
-    playCorrectSound();
-    score.correct++;
-    selectedQuestion.solved = true;
-    updateSRSOnCorrect(selectedQuestion.id);
-
+    playCorrectSound(); score.correct++; selectedQuestion.solved = true; updateSRSOnCorrect(selectedQuestion.id);
     showInfo(selectedQuestion.info, selectedQuestion.id);
     leftItems.forEach(li=>{ if (li.textContent === selectedQuestion.question) li.classList.add("correct"); });
     allAnswers.forEach(a=>{ if (a.textContent === txt) a.classList.add("correct"); });
-
     highlightSelection();
-
-    if (helpMode) { helpMode = false; setTimeout(render, 300); }
-
-    if (pairs.every(p=>p.solved)) {
-      setTimeout(()=>alert(`¡Completaste todos!\nAciertos: ${score.correct}\nErrores: ${score.wrong}`),100);
-    }
+    if (pairs.every(p=>p.solved)) { setTimeout(()=>alert(`¡Completaste todos!\nAciertos: ${score.correct}\nErrores: ${score.wrong}`),100); }
   } else {
-    playWrongSound();
-    score.wrong++;
-    updateSRSOnWrong(selectedQuestion.id);
-    allAnswers.forEach(a=>{
-      if (a.textContent === txt) {
-        a.classList.add("wrong");
-        setTimeout(()=>a.classList.remove("wrong"), 500);
-      }
-    });
+    playWrongSound(); score.wrong++; updateSRSOnWrong(selectedQuestion.id);
+    allAnswers.forEach(a=>{ if (a.textContent === txt) { a.classList.add("wrong"); setTimeout(()=>a.classList.remove("wrong"),500); }});
   }
 }
 
@@ -361,101 +287,48 @@ function handleHelpClick() {
   helpMode = true;
   const correct = selectedQuestion.answer;
   const wrongs = shuffle(selectedQuestion.distractors.filter(x=>x));
-  const options = shuffle([correct, ...wrongs.slice(0,2)]);
-  renderRight(options);
+  renderRight(shuffle([correct, ...wrongs.slice(0,2)]));
 }
-helpBtn.onclick = handleHelpClick;
-helpBtnTop.onclick = handleHelpClick;
+helpBtn.onclick = handleHelpClick; helpBtnTop.onclick = handleHelpClick;
 
-// --- Preparación ---
 function prepareData(){
   const sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1ku8Bwcp5dau8z-3zbILSBb0sQ-Kw62Peznvqv-Q0j9_h-uzkq1m6DS4Q8ZFv1On44lnMNtuyVYQl/pub?output=csv";
   fetch(sheetUrl)
     .then(res => res.text())
     .then(csvText => {
       const parsed = Papa.parse(csvText, { header: true });
-      const srs = getSRSData();
-      const today = todayISO();
-      let due = 0, future = 0;
-
+      const srs = getSRSData(); const today = todayISO();
       let rows = parsed.data.map(row => ({
-        id: row["ID"],
-        question: row["Pregunta"]?.trim(),
-        answer: row["Respuesta"]?.trim(),
+        id: row["ID"], question: row["Pregunta"]?.trim(), answer: row["Respuesta"]?.trim(),
         distractors: [row["Distractor 1"]?.trim(), row["Distractor 2"]?.trim(), row["Distractor 3"]?.trim()],
-        info: row["Info"]?.trim() || "",
-        solved: false
+        info: row["Info"]?.trim() || "", solved: false
       })).filter(p => p.question && p.answer);
-
-      rows.forEach(r=>{
-        let info = srs[r.id];
-        if (!info || info.dueDate <= today) due++; else future++;
-      });
-
-      if (!confirm(`Total tarjetas: ${rows.length}\nDisponibles hoy: ${due}\nProgramadas para más adelante: ${future}\n\n¿Quieres continuar?`)) {
-        return;
-      }
-
-      let candidates = rows.filter(r=>{
-        const d = srs[r.id];
-        return !d || d.dueDate <= today;
-      });
-
-      candidates.sort((a,b)=>{
-        let sa = srs[a.id]?.wrongCount || 0;
-        let sb = srs[b.id]?.wrongCount || 0;
-        return sb - sa;
-      });
-
-      const numTerms = parseInt(document.getElementById("numTerms").value, 10);
-      let top = Math.ceil(numTerms * 0.4);
-      let middle = Math.ceil(numTerms * 0.3);
-      let rest = numTerms - top - middle;
-
-      const hard = shuffle(candidates.slice(0, 30)).slice(0, top);
-      const midStart = Math.floor(candidates.length/3);
-      const middleBlock = shuffle(candidates.slice(midStart, midStart+30)).slice(0, middle);
-      const endBlock = shuffle(candidates.slice(-30)).slice(0, rest);
-
-      allPairs = shuffle([...hard, ...middleBlock, ...endBlock]);
-
+      let due=0,future=0;
+      rows.forEach(r=>{let info = srs[r.id]; if (!info || info.dueDate <= today) due++; else future++;});
+      if (!confirm(`Total tarjetas: ${rows.length}\nDisponibles hoy: ${due}\nProgramadas: ${future}\n¿Continuar?`)) return;
+      let candidates = rows.filter(r=>{const d=srs[r.id];return !d||d.dueDate<=today;});
+      candidates.sort((a,b)=>{let sa=srs[a.id]?.wrongCount||0;let sb=srs[b.id]?.wrongCount||0;return sb-sa;});
+      const numTerms=parseInt(document.getElementById("numTerms").value,10);
+      let top=Math.ceil(numTerms*0.4); let middle=Math.ceil(numTerms*0.3); let rest=numTerms-top-middle;
+      const hard=shuffle(candidates.slice(0,30)).slice(0,top);
+      const midStart=Math.floor(candidates.length/3);
+      const middleBlock=shuffle(candidates.slice(midStart,midStart+30)).slice(0,middle);
+      const endBlock=shuffle(candidates.slice(-30)).slice(0,rest);
+      allPairs=shuffle([...hard,...middleBlock,...endBlock]);
       if (allPairs.length===0){ alert("No hay tarjetas para hoy"); return; }
-
-      pairs = JSON.parse(JSON.stringify(allPairs));
-      score = {correct:0, wrong:0};
-      helpMode = false;
-      showInfo("");
-
-      document.getElementById("setup").style.display = "none";
-      document.getElementById("game").style.display = "flex";
-      helpBtn.style.display = "inline-block";
-      helpBtnTop.style.display = "inline-block";
-      backBtn.style.display = "inline-block";
-      resetBtn.style.display = "inline-block";
-      clearHistoryBtn.style.display = "inline-block";
-
+      pairs=JSON.parse(JSON.stringify(allPairs)); score={correct:0,wrong:0}; helpMode=false; showInfo("");
+      document.getElementById("setup").style.display="none"; document.getElementById("game").style.display="flex";
+      helpBtn.style.display="inline-block"; helpBtnTop.style.display="inline-block"; backBtn.style.display="inline-block";
+      resetBtn.style.display="inline-block"; clearHistoryBtn.style.display="inline-block";
       render();
     })
     .catch(err => alert("Error al cargar los datos: " + err));
 }
-
-function resetGame() {
-  pairs = JSON.parse(JSON.stringify(allPairs));
-  score = {correct:0, wrong:0};
-  helpMode = false;
-  showInfo("");
-  render();
-}
-
+function resetGame() { pairs = JSON.parse(JSON.stringify(allPairs)); score = {correct:0, wrong:0}; helpMode = false; showInfo(""); render();}
 function goBack() {
-  document.getElementById("setup").style.display = "block";
-  document.getElementById("game").style.display = "none";
-  helpBtn.style.display = "none";
-  helpBtnTop.style.display = "none";
-  backBtn.style.display = "none";
-  resetBtn.style.display = "none";
-  clearHistoryBtn.style.display = "none";
-  showInfo("");
+  document.getElementById("setup").style.display="block"; document.getElementById("game").style.display="none";
+  helpBtn.style.display="none"; helpBtnTop.style.display="none"; backBtn.style.display="none";
+  resetBtn.style.display="none"; clearHistoryBtn.style.display="none"; showInfo("");
 }
 </script>
 
